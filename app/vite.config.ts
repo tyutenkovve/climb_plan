@@ -1,0 +1,4 @@
+import { defineConfig } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
+const base = process.env.VITE_BASE || '/';
+export default defineConfig({base, plugins:[VitePWA({registerType:'prompt',injectRegister:false,includeAssets:['icons/rock.svg','icons/icon-192.png','icons/icon-512.png','program-template.json'],manifest:{id:base,start_url:base,scope:base,name:'Камень · трекер тренировок',short_name:'Камень',description:'Локальный дневник скалолазных тренировок',lang:'ru',display:'standalone',background_color:'#f6f3e9',theme_color:'#172e2b',icons:[{src:`${base}icons/icon-192.png`,sizes:'192x192',type:'image/png',purpose:'any maskable'},{src:`${base}icons/icon-512.png`,sizes:'512x512',type:'image/png',purpose:'any maskable'}]},workbox:{globPatterns:['**/*.{js,css,html,png,svg,json,webmanifest}'],navigateFallback:`${base}index.html`,cleanupOutdatedCaches:true}})]});

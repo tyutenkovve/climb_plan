@@ -1,0 +1,38 @@
+{
+  "id": "my-climbing-program",
+  "version": "1.0.0",
+  "title": "Моя программа",
+  "startRules": [],
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Общая идея",
+      "text": "Замените этот текст описанием вашей программы.",
+      "source": "мой файл"
+    }
+  ],
+  "exercises": [
+    {
+      "id": "example-exercise",
+      "mode": "A",
+      "title": "Пример упражнения",
+      "kind": "climb",
+      "minutes": null,
+      "dose": "Заполните план",
+      "instruction": "Добавьте пояснение к упражнению",
+      "source": "мой файл",
+      "section": "overview"
+    }
+  ],
+  "templates": [
+    {
+      "id": "example-workout",
+      "name": "Пример тренировки A",
+      "type": "A",
+      "exerciseIds": ["example-exercise"]
+    }
+  ],
+  "weeks": [],
+  "sources": [],
+  "glossary": {}
+}
