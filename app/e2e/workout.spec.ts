@@ -48,6 +48,7 @@ test('календарь, программа, запись, копия и офл
   expect(backup.days).toHaveLength(1);
   expect(backup.days[0]).toMatchObject({date:'2026-09-22',goal:'Работа ногами',climbing:'Синяя 7A, 3 попытки',conditioning:'Висы 3 × 7 секунд',duration:95,rpe:6,leftWrist:1});
   expect(backup.programs).toHaveLength(1);
+  expect(backup.programs[0].id).toBe('neutral-test');
   const clean=await browser.newContext();const second=await clean.newPage();await second.goto('/');
   await second.getByRole('button',{name:'Данные и резервная копия'}).click();
   await second.locator('.settings-dialog input[type=file]').setInputFiles({name:'backup.json',mimeType:'application/json',buffer:Buffer.from(raw)});
@@ -58,6 +59,21 @@ test('календарь, программа, запись, копия и офл
   await second.getByRole('button',{name:'Закрыть'}).click();await dayCell(second).click();
   await expect(second.getByLabel('Лазание — что получилось')).toHaveValue('Синяя 7A, 3 попытки');
   await clean.close();expect(errors).toEqual([]);
+});
+
+test('новая встроенная версия заменяет только прежнюю встроенную программу',async({page})=>{
+  await page.goto('/');await page.getByRole('button',{name:'Программа'}).click();
+  await expect(page.getByText('ЗАГРУЖЕНА · 1.0.0')).toBeVisible();
+  await page.evaluate(()=>new Promise<void>((resolve,reject)=>{
+    const request=indexedDB.open('climb-tracker');request.onerror=()=>reject(request.error);request.onsuccess=()=>{
+      const database=request.result,transaction=database.transaction(['programs','settings'],'readwrite'),programs=transaction.objectStore('programs'),settings=transaction.objectStore('settings');
+      const programRequest=programs.get('personal-bouldering-2026');programRequest.onsuccess=()=>programs.put({...programRequest.result,version:'0.9.0'});
+      const settingsRequest=settings.get('main');settingsRequest.onsuccess=()=>settings.put({...settingsRequest.result,programSource:'bundled',bundledProgramVersion:'0.9.0'});
+      transaction.oncomplete=()=>{database.close();resolve()};transaction.onerror=()=>reject(transaction.error);
+    };
+  }));
+  await page.reload();
+  await expect(page.getByText('ЗАГРУЖЕНА · 1.0.0')).toBeVisible();
 });
 
 test('мобильная страница и свайп вправо',async({page})=>{

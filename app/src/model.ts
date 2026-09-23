@@ -17,7 +17,10 @@ export type ProgramPackage = {
   glossary:Record<string,string>;
   startRules?:{label:string;text:string;source:string}[];
 };
-export type Settings = {id:'main';schemaVersion:number;lastExportAt:string|null;lastChangeAt:string|null};
+export type Settings = {
+  id:'main';schemaVersion:number;lastExportAt:string|null;lastChangeAt:string|null;
+  programSource:'bundled'|'imported'|null;bundledProgramVersion:string|null;
+};
 export const today=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 export const localDate=(iso:string)=>{const [y,m,d]=iso.split('-').map(Number);return new Date(y,m-1,d)};
 export function emptyDay(date:string):DayEntry {const now=new Date().toISOString();return {date,goal:'',climbing:'',conditioning:'',templateId:null,plan:[],duration:null,rpe:null,leftWrist:null,morning:{wrist:null,fingers:null,fatigue:null,note:''},createdAt:now,updatedAt:now,revision:0}}

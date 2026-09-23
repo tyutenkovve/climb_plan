@@ -6,7 +6,7 @@ const isObject=(value:unknown):value is Record<string,unknown>=>value!==null&&ty
 const isText=(value:unknown):value is string=>typeof value==='string';
 const isNumber=(value:unknown)=>value===null||typeof value==='number'&&Number.isFinite(value);
 const isDate=(value:unknown)=>{if(!isText(value)||!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;const [y,m,d]=value.split('-').map(Number),check=new Date(y,m-1,d);return check.getFullYear()===y&&check.getMonth()+1===m&&check.getDate()===d};
-const settingsDefault=():Settings=>({id:'main',schemaVersion:3,lastExportAt:null,lastChangeAt:null});
+const settingsDefault=():Settings=>({id:'main',schemaVersion:3,lastExportAt:null,lastChangeAt:null,programSource:null,bundledProgramVersion:null});
 
 class ClimbDB extends Dexie {
   days!:Table<DayEntry,string>;
@@ -30,10 +30,21 @@ class ClimbDB extends Dexie {
 export const db=new ClimbDB();
 export const getDays=()=>db.days.toArray();
 export async function getProgram():Promise<ProgramPackage|null>{
-  const saved=await db.programs.toCollection().first();
-  if(saved)return saved;
-  await importProgram(bundledProgram);
-  return await db.programs.toCollection().first()||null;
+  assertProgram(bundledProgram);
+  let result:ProgramPackage|null=null;
+  await db.transaction('rw',db.programs,db.settings,async()=>{
+    const saved=await db.programs.toCollection().first(),settings={...settingsDefault(),...await db.settings.get('main')};
+    const source=settings.programSource||(saved?.id===bundledProgram.id?'bundled':'imported');
+    if(!saved||source==='bundled'&&saved.id===bundledProgram.id&&saved.version!==bundledProgram.version){
+      await db.programs.clear();await db.programs.put(bundledProgram);result=bundledProgram;
+      await db.settings.put({...settings,programSource:'bundled',bundledProgramVersion:bundledProgram.version});
+    }else{
+      result=saved;
+      const normalizedSource=source==='bundled'&&saved.id!==bundledProgram.id?'imported':source;
+      if(settings.programSource!==normalizedSource||normalizedSource==='bundled'&&settings.bundledProgramVersion!==saved.version)await db.settings.put({...settings,programSource:normalizedSource,bundledProgramVersion:normalizedSource==='bundled'?saved.version:settings.bundledProgramVersion});
+    }
+  });
+  return result;
 }
 export const getSettings=async()=>await db.settings.get('main')||settingsDefault();
 
@@ -53,7 +64,7 @@ export function assertProgram(value:unknown):asserts value is ProgramPackage {
   const exerciseIds=new Set(value.exercises.map(e=>e.id));
   if(value.templates.some(t=>t.exerciseIds.some((id:string)=>!exerciseIds.has(id))))throw new Error('В тренировке указано неизвестное упражнение');
 }
-export async function importProgram(value:unknown){assertProgram(value);await db.transaction('rw',db.programs,db.settings,async()=>{await db.programs.clear();await db.programs.put(value);await db.settings.put({...await getSettings(),lastChangeAt:new Date().toISOString()})})}
+export async function importProgram(value:unknown){assertProgram(value);await db.transaction('rw',db.programs,db.settings,async()=>{await db.programs.clear();await db.programs.put(value);await db.settings.put({...await getSettings(),programSource:'imported',lastChangeAt:new Date().toISOString()})})}
 
 export type Backup={schemaVersion:2;appVersion:string;exportedAt:string;days:DayEntry[];programs:ProgramPackage[];settings:Settings;legacyWorkouts:Record<string,unknown>[];legacyTemplates:Record<string,unknown>[]};
 export async function makeBackup():Promise<Backup>{return {schemaVersion:2,appVersion:'0.2.0',exportedAt:new Date().toISOString(),days:await db.days.toArray(),programs:await db.programs.toArray(),settings:await getSettings(),legacyWorkouts:await db.workouts.toArray(),legacyTemplates:await db.templates.toArray()}}
@@ -73,13 +84,13 @@ export function parseBackup(raw:string):Backup {
   for(const d of value.days){if(!isObject(d)||!isDate(d.date)||!isText(d.goal)||!isText(d.climbing)||!isText(d.conditioning)||!(d.templateId===null||isText(d.templateId))||!Array.isArray(d.plan)||!d.plan.every(p=>isObject(p)&&isText(p.id)&&isText(p.title)&&isText(p.dose)&&isText(p.instruction)&&isText(p.kind))||!isNumber(d.duration)||!isNumber(d.rpe)||!isNumber(d.leftWrist)||!isObject(d.morning)||!isNumber(d.morning.wrist)||!isNumber(d.morning.fingers)||!isNumber(d.morning.fatigue)||!isText(d.morning.note)||!isText(d.createdAt)||!isText(d.updatedAt)||typeof d.revision!=='number'||!Number.isInteger(d.revision))throw new Error('В копии повреждён день')}
   if(new Set(value.days.map(d=>d.date)).size!==value.days.length)throw new Error('В копии повторяются даты');
   if(value.legacyWorkouts.some(w=>!isObject(w)||!isText(w.id))||value.legacyTemplates.some(t=>!isObject(t)||!isText(t.id)))throw new Error('В копии повреждён старый архив');
-  if(value.settings.id!=='main'||!(value.settings.lastExportAt===null||isText(value.settings.lastExportAt))||!(value.settings.lastChangeAt===null||isText(value.settings.lastChangeAt)))throw new Error('В копии повреждены настройки');
+  if(value.settings.id!=='main'||!(value.settings.lastExportAt===null||isText(value.settings.lastExportAt))||!(value.settings.lastChangeAt===null||isText(value.settings.lastChangeAt))||!(value.settings.programSource===undefined||value.settings.programSource===null||value.settings.programSource==='bundled'||value.settings.programSource==='imported')||!(value.settings.bundledProgramVersion===undefined||value.settings.bundledProgramVersion===null||isText(value.settings.bundledProgramVersion)))throw new Error('В копии повреждены настройки');
   return value as Backup;
 }
 export async function restoreBackup(backup:Backup){await db.transaction('rw',db.days,db.programs,db.settings,db.workouts,db.templates,async()=>{
   await Promise.all([db.days.clear(),db.programs.clear(),db.settings.clear(),db.workouts.clear(),db.templates.clear()]);
   await db.days.bulkPut(backup.days);await db.programs.bulkPut(backup.programs);await db.workouts.bulkPut(backup.legacyWorkouts);await db.templates.bulkPut(backup.legacyTemplates);
-  await db.settings.put({...backup.settings,schemaVersion:3});
+  await db.settings.put({...settingsDefault(),...backup.settings,schemaVersion:3});
 })}
 export async function shareBackup(backup:Backup){const file=new File([JSON.stringify(backup,null,2)],`climb-backup-${new Date().toISOString().slice(0,10)}.json`,{type:'application/json'});if(navigator.canShare?.({files:[file]})){try{await navigator.share({files:[file],title:'Резервная копия Камень'});return 'shared'}catch(e){if((e as DOMException).name==='AbortError')return 'cancelled'}}const url=URL.createObjectURL(file),link=document.createElement('a');link.href=url;link.download=file.name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);return 'downloaded'}
 export async function markExport(){await db.settings.put({...await getSettings(),lastExportAt:new Date().toISOString()})}
